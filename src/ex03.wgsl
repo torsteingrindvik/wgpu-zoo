@@ -14,6 +14,8 @@ var<uniform> u_mouse: vec2<f32>;
 @binding(3)
 var<uniform> u_time: f32;
 
+var<push_constant> threshold: f32;
+
 struct VertexInput {
     @location(0) position: vec2<f32>,
 }
@@ -72,21 +74,11 @@ fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
     let lv_pos = length(v_pos);
     let lv_mouse = length(v_mouse);
 
-    // cos of pos, mouse
-    let ang = dot(v_pos, v_mouse) / lv_pos / lv_mouse;
 
-    var color = vec4<f32>(0.8, 0.0, 0.0, 1.0);
-    if (lv_pos < lv_mouse && lv_mouse < 0.5) {
-        var signal = lv_pos;
-        // If 
-        signal -= 0.2 * ang;
-        
-        var dist = 1. - signal;
+    var color = vec4<f32>(0.1, 0.1, 0.1, 1.0);
 
-        // Re-shape: Make it taper off a lot harder.
-        dist = pow(dist, 25.);
-
-        color.y = dist;
+    if ((lv_pos < threshold) && (lv_mouse < threshold)) {
+        color.y = 1.;
     }
 
     return color;

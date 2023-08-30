@@ -2,10 +2,15 @@
 Goals:
     INITIAL
     - Try triangle strip
+        - Done for quad
     - Try visually showing mouse close to a vertex
+        - Done via frag shader
+    - Try passing the threshold for how close mouse must be to show vertex proximity via push constant
+        - Done
 
     MORE FANCY
     - When click + near, should attach to vertex somehow to be able to swap
+        - Done
 
 Things we learned:
     - The builtin position is transformed into another coord space when moving from vertex to frag shaders.
@@ -18,9 +23,9 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BufferUsages, CommandEncoderDescriptor, FragmentState, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderStages,
-    TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexState,
+    Operations, PipelineLayoutDescriptor, PrimitiveState, PushConstantRange,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    ShaderStages, TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexState,
 };
 
 use crate::{util::ExampleCommonState, Example, ExampleData};
@@ -30,12 +35,23 @@ pub struct Example03 {
     render_pipeline: Option<RenderPipeline>,
     bgl0: BindGroupLayout,
     vertices: [[f32; 2]; 4],
-    vertices_align16: [[f32; 4]; 4],
-    // quad: Buffer,
+
+    // Index of selected vertex if any
+    selected_vertex: Option<u32>,
+
+    mouse_close_threshold: f32,
 }
 
 impl Example for Example03 {
     fn handle_key(&mut self, _key: winit::event::VirtualKeyCode) {}
+
+    fn handle_scroll(&mut self, scroll_up: bool) {
+        if scroll_up {
+            self.mouse_close_threshold = (self.mouse_close_threshold + 0.01).min(0.3);
+        } else {
+            self.mouse_close_threshold = (self.mouse_close_threshold - 0.01).max(0.1);
+        }
+    }
 
     fn render(&mut self, data: &ExampleData) {
         self.do_render(data);
@@ -44,9 +60,44 @@ impl Example for Example03 {
     fn common(&mut self) -> &mut ExampleCommonState {
         &mut self.common
     }
+
+    fn handle_click(&mut self, position: [f32; 2], pressed: bool) {
+        dbg!(pressed, position);
+
+        if pressed {
+
+        for (i, v) in self.vertices.iter().enumerate() {
+            let len = 
+                // Length of vertex index i to mouse
+                ((position[0] - v[0]).powf(2.0) + (position[1] - v[1]).powf(2.0)).sqrt();
+            let close_enough = len < self.mouse_close_threshold;
+            dbg!(
+                i,
+                len,
+                close_enough
+            );
+
+            if close_enough {
+                self.selected_vertex = Some(i as u32);
+            }
+        }
+        } else {
+            self.selected_vertex = None;
+        }
+
+    }
 }
 
 impl Example03 {
+    fn vertices_align16(&self) -> [[f32; 4]; 4] {
+        [
+            [self.vertices[0][0], self.vertices[0][1], 0.0, 0.0],
+            [self.vertices[1][0], self.vertices[1][1], 0.0, 0.0],
+            [self.vertices[2][0], self.vertices[2][1], 0.0, 0.0],
+            [self.vertices[3][0], self.vertices[3][1], 0.0, 0.0],
+        ]
+    }
+
     pub fn new(e: &ExampleData) -> Self {
         let shader_source = "ex03.wgsl";
         let texture_format = e.swapchain_format;
@@ -117,20 +168,14 @@ impl Example03 {
         //  3 = bottom right
         let vertices = [[-0.5, 0.5], [-0.5, -0.5], [0.5, 0.5], [0.5, -0.5]];
 
-        // Because an array stride cannot be 8 bytes, it must align to 16
-        let vertices_align16 = [
-            [-0.5, 0.5, 0., 0.],
-            [-0.5, -0.5, 0., 0.],
-            [0.5, 0.5, 0., 0.],
-            [0.5, -0.5, 0., 0.],
-        ];
 
         Self {
             render_pipeline: None,
             bgl0,
             vertices,
-            vertices_align16,
             common,
+            mouse_close_threshold: 0.2,
+            selected_vertex: None,
         }
     }
 
@@ -140,7 +185,10 @@ impl Example03 {
             layout: Some(&e.device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: "ex03-rpass-pld".into(),
                 bind_group_layouts: &[&self.bgl0],
-                push_constant_ranges: &[],
+                push_constant_ranges: &[PushConstantRange {
+                    stages: ShaderStages::FRAGMENT,
+                    range: 0..4,
+                }],
             })),
             vertex: VertexState {
                 module: &self.common.shader_module,
@@ -181,6 +229,11 @@ impl Example03 {
             self.render_pipeline = Some(self.make_render_pipeline(&e));
             self.common.dirty = false;
         }
+        
+        // If something is selected, move that vertex to where the mouse is
+        if let Some(vi) = self.selected_vertex {
+            self.vertices[vi as usize] = e.mouse;
+        }
 
         let viewport_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex03-uni-viewport".into(),
@@ -189,7 +242,7 @@ impl Example03 {
         });
         let quad_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex03-uni-quad".into(),
-            contents: bytemuck::cast_slice(self.vertices_align16.as_slice()),
+            contents: bytemuck::cast_slice(self.vertices_align16().as_slice()),
             usage: BufferUsages::UNIFORM,
         });
         let mouse_buf = e.device.create_buffer_init(&BufferInitDescriptor {
@@ -259,6 +312,12 @@ impl Example03 {
             rpass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
             rpass.set_vertex_buffer(0, quad.slice(..));
             rpass.set_bind_group(0, &bg0, &[]);
+
+            rpass.set_push_constants(
+                ShaderStages::FRAGMENT,
+                0,
+                self.mouse_close_threshold.to_le_bytes().as_ref(),
+            );
             rpass.draw(0..4, 0..1);
         }
 

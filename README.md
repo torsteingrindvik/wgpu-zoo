@@ -46,13 +46,14 @@ Move mouse to have the ring follow.
 ## Example 3: Moving quad
 
 * A quad via four vertices and a triangle strip (instead of the normal list)
-* Color via vertex attr
-* If mouse is close to a vertex, vertex turns green
-* No culling such that we can invert
+* If mouse is close to a vertex, area close to vertex turns green to indicate "selectable"
+* Mouse to click and hold to move vertex
+* Push constant to adjust proximity threshold (via scroll)
 
 ### Controls
 
-Mouse to hover, then press to select, hold down and move then release to place
+Mouse to hover, then press to select, hold down and move then release to place.
+Scroll wheel to increase/decrease threshold.
 
 ## Example n: Compute into render
 

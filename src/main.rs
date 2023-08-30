@@ -3,7 +3,8 @@ use std::{path::Path, time::Duration};
 use notify::{PollWatcher, Watcher};
 use util::ExampleCommonState;
 use wgpu::{
-    Backends, Device, Features, PolygonMode, Queue, Surface, SurfaceConfiguration, TextureFormat,
+    Backends, Device, Features, Limits, PolygonMode, Queue, Surface, SurfaceConfiguration,
+    TextureFormat,
 };
 use winit::{
     event::{
@@ -25,15 +26,16 @@ pub trait Example {
     // Render!
     fn render(&mut self, data: &ExampleData);
 
-    // Ask the example to try to recompile the shader.
-    // Used when file changes happen.
-    // If the recompiled shader does not compile, the example may ignore it
-    // and keep the old one.
-    // fn try_recompile_shader(&mut self, device: &Device);
-
     // Mouse scroll registered, either up or down
     fn handle_scroll(&mut self, _scroll_up: bool) {}
 
+    // On mouse left click in clip space (-1., -1.) = bottom left to (1., 1.) = top right.
+    // If `!pressed` that means released.
+    fn handle_click(&mut self, _position: [f32; 2], _pressed: bool) {}
+
+    // Used via main runner to:
+    //  - increase example elapsed time
+    //  - recreate shader (on file events) and mark dirty (for example to e.g. recreate pipeline)
     fn common(&mut self) -> &mut ExampleCommonState;
 }
 
@@ -112,12 +114,21 @@ fn setup() -> (EventLoop<()>, ExampleData) {
             label: Some("device-descr-setup"),
             features: Features::default()
                 | Features::POLYGON_MODE_LINE
-                | Features::POLYGON_MODE_POINT,
-            ..Default::default()
+                | Features::POLYGON_MODE_POINT
+                | Features::PUSH_CONSTANTS,
+            limits: Limits {
+                // https://docs.rs/wgpu/latest/wgpu/struct.Limits.html#structfield.max_push_constant_size
+                // Seems this amount should be supported by all backends
+                max_push_constant_size: 128,
+                ..Default::default()
+            },
         },
         Some(&Path::new("trace.txt")),
     ))
     .unwrap();
+
+    dbg!(device.features());
+    dbg!(device.limits());
 
     let viewport = configure_surface(&mut surface, &device, swapchain_format, &window);
 
@@ -322,7 +333,6 @@ fn main() {
                     + 1.0;
 
                 example_data.mouse = [x as f32, y as f32];
-                // dbg!(&example_data.mouse);
             }
 
             // Event::NewEvents(_) => todo!(),
@@ -352,6 +362,13 @@ fn main() {
                 } else if vertical < -0.5 {
                     ex.handle_scroll(false)
                 }
+            }
+
+            Event::DeviceEvent {
+                event: DeviceEvent::Button { button: 1, state },
+                ..
+            } => {
+                ex.handle_click(example_data.mouse, state == ElementState::Pressed);
             }
 
             Event::DeviceEvent {
