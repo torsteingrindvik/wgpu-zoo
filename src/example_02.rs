@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -19,7 +17,6 @@ pub struct Example02 {
     bgl0: BindGroupLayout,
     vertices: [[f32; 2]; 3],
     num_instances: u32,
-    time: Duration,
     radius: f32,
 }
 
@@ -41,10 +38,6 @@ impl Example for Example02 {
 
     fn render(&mut self, data: &ExampleData) {
         self.do_render(data);
-    }
-
-    fn dt(&mut self, dt: Duration) {
-        self.time += dt;
     }
 
     fn handle_scroll(&mut self, scroll_up: bool) {
@@ -171,7 +164,6 @@ impl Example02 {
         Self {
             render_pipeline: None,
             vertices: [[-0.5, 0.0], [0.0, 1.0], [0.5, 0.0]],
-            time: Duration::from_secs(0),
             bgl0,
             num_instances: 10,
             radius: 0.3,
@@ -222,7 +214,7 @@ impl Example02 {
         });
         let time_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex02-uni-time".into(),
-            contents: self.time.as_secs_f32().to_le_bytes().as_ref(),
+            contents: self.common.time.as_secs_f32().to_le_bytes().as_ref(),
             usage: BufferUsages::UNIFORM,
         });
 

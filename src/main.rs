@@ -34,9 +34,6 @@ pub trait Example {
     // Mouse scroll registered, either up or down
     fn handle_scroll(&mut self, _scroll_up: bool) {}
 
-    // Duration since last render
-    fn dt(&mut self, _dt: Duration) {}
-
     fn common(&mut self) -> &mut ExampleCommonState;
 }
 
@@ -194,7 +191,7 @@ fn main() {
         let now = std::time::Instant::now();
         let dt = now - last_time;
         // Example time update
-        ex.dt(dt);
+        ex.common().increase_time(dt);
         last_time = now;
 
         *ctrl_flow = ControlFlow::WaitUntil(now + Duration::from_secs_f32(1. / 60.));

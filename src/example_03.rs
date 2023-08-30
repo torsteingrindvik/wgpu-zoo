@@ -2,8 +2,7 @@
 Goals:
     INITIAL
     - Try triangle strip
-    - Try vertex attr for vertex color
-        - Modify in vertex shader to indicate distance to mouse
+    - Try visually showing mouse close to a vertex
 
     MORE FANCY
     - When click + near, should attach to vertex somehow to be able to swap
@@ -15,8 +14,6 @@ Things we learned:
     - An array should be array<vec4<f32>, 4> to have 4 elements, then it gets the SIZED flag
     - It's hard to think in terms of single fragments vs. the whole frag shader
  */
-use std::time::Duration;
-
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
@@ -35,7 +32,6 @@ pub struct Example03 {
     vertices: [[f32; 2]; 4],
     vertices_align16: [[f32; 4]; 4],
     // quad: Buffer,
-    time: Duration,
 }
 
 impl Example for Example03 {
@@ -43,10 +39,6 @@ impl Example for Example03 {
 
     fn render(&mut self, data: &ExampleData) {
         self.do_render(data);
-    }
-
-    fn dt(&mut self, dt: Duration) {
-        self.time += dt;
     }
 
     fn common(&mut self) -> &mut ExampleCommonState {
@@ -135,7 +127,6 @@ impl Example03 {
 
         Self {
             render_pipeline: None,
-            time: Duration::from_secs(0),
             bgl0,
             vertices,
             vertices_align16,
@@ -159,14 +150,11 @@ impl Example03 {
                     VertexBufferLayout {
                         array_stride: wgpu::VertexFormat::Float32x2.size(),
                         step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[
-                            // TODO: Add colors
-                            VertexAttribute {
-                                format: wgpu::VertexFormat::Float32x2,
-                                offset: 0,
-                                shader_location: 0,
-                            },
-                        ],
+                        attributes: &[VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0,
+                            shader_location: 0,
+                        }],
                     },
                 ],
             },
@@ -211,7 +199,7 @@ impl Example03 {
         });
         let time_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex03-uni-time".into(),
-            contents: self.time.as_secs_f32().to_le_bytes().as_ref(),
+            contents: self.common.time.as_secs_f32().to_le_bytes().as_ref(),
             usage: BufferUsages::UNIFORM,
         });
 

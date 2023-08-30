@@ -1,4 +1,4 @@
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, path::PathBuf, time::Duration};
 
 use wgpu::{Device, PolygonMode, ShaderModule, ShaderModuleDescriptor, TextureFormat};
 
@@ -10,6 +10,13 @@ pub struct ExampleCommonState {
     pub shader_source: &'static str,
     pub label: &'static str,
     pub polygon_mode: PolygonMode,
+
+    // How long has this example gotten to run?
+    // Pauses when example inactive
+    pub time: Duration,
+
+    // Should this example recreate resources?
+    // E.g. the `RenderPipeline`.
     pub dirty: bool,
 }
 
@@ -45,7 +52,12 @@ impl ExampleCommonState {
             shader_module: shader_module(device, shader_source, label),
             polygon_mode: PolygonMode::Fill,
             dirty: true,
+            time: Duration::from_secs(0),
         }
+    }
+
+    pub fn increase_time(&mut self, dt: Duration) {
+        self.time += dt;
     }
 
     pub fn recreate_shader(&mut self, device: &Device) {

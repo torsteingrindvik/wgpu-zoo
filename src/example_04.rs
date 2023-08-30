@@ -22,7 +22,6 @@ pub struct Example04 {
     bgl0: BindGroupLayout,
     vertices: [[f32; 2]; 3],
     num_instances: u32,
-    time: Duration,
     radius: f32,
     polygon_mode: PolygonMode,
     shader_module: ShaderModule,

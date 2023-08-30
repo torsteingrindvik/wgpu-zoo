@@ -12,6 +12,8 @@ The goal is just to poke at things to see what I can learn.
 - Debug markers in vulkan?
 - ~~Hot reload~~
     - Done via `notify` on `wgsl` file changes
+- Catch bad compile of wgsl?
+- Allow spoofing mouse movements
 
 ## Example harness
 
