@@ -3,6 +3,16 @@
 Just visiting the different animals I can find within wgpu.
 The goal is just to poke at things to see what I can learn.
 
+## TODOs
+
+- ~~Make `PolygonMode` hotkey available to change for all examples? If requested of an example the pipeline could just be recreated to use the new one.~~
+    - Done via keys Up/Down/W/S and marking dirty
+- ~~X button to close window~~
+    - Done via `WindowEvent::CloseRequested`
+- Debug markers in vulkan?
+- ~~Hot reload~~
+    - Done via `notify` on `wgsl` file changes
+
 ## Example harness
 
 Examples implement a trait. When examples run via `winit`, key events are passed down, as well as delta time.

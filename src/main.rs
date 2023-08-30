@@ -1,6 +1,10 @@
 use std::{path::Path, time::Duration};
 
-use wgpu::{Backends, Device, Features, Queue, Surface, SurfaceConfiguration, TextureFormat};
+use notify::{PollWatcher, Watcher};
+use util::ExampleCommonState;
+use wgpu::{
+    Backends, Device, Features, PolygonMode, Queue, Surface, SurfaceConfiguration, TextureFormat,
+};
 use winit::{
     event::{
         DeviceEvent, ElementState, KeyboardInput, MouseScrollDelta, VirtualKeyCode, WindowEvent,
@@ -12,19 +16,28 @@ use winit::{
 mod example_01;
 mod example_02;
 mod example_03;
+pub mod util;
 
 pub trait Example {
     // Keyboard
     fn handle_key(&mut self, key: VirtualKeyCode);
 
-    // Mouse scroll registered, either up or down
-    fn handle_scroll(&mut self, _scroll_up: bool) {}
-
     // Render!
     fn render(&mut self, data: &ExampleData);
 
+    // Ask the example to try to recompile the shader.
+    // Used when file changes happen.
+    // If the recompiled shader does not compile, the example may ignore it
+    // and keep the old one.
+    // fn try_recompile_shader(&mut self, device: &Device);
+
+    // Mouse scroll registered, either up or down
+    fn handle_scroll(&mut self, _scroll_up: bool) {}
+
     // Duration since last render
     fn dt(&mut self, _dt: Duration) {}
+
+    fn common(&mut self) -> &mut ExampleCommonState;
 }
 
 pub struct ExampleData {
@@ -33,7 +46,10 @@ pub struct ExampleData {
     queue: Queue,
     surface: Surface,
     swapchain_format: TextureFormat,
+
+    // For use in uniforms:
     mouse: [f32; 2],
+    viewport: [f32; 2],
 }
 
 fn configure_surface(
@@ -41,29 +57,33 @@ fn configure_surface(
     device: &Device,
     format: TextureFormat,
     window: &Window,
-) {
+) -> [f32; 2] {
+    let size = window.inner_size();
+    let viewport = [size.width as f32, size.height as f32];
+
     surface.configure(
         &device,
         &SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
-            width: window.inner_size().width,
-            height: window.inner_size().height,
+            width: size.width,
+            height: size.height,
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         },
     );
+    viewport
 }
 
 impl ExampleData {
     fn configure_surface(&mut self) {
-        configure_surface(
+        self.viewport = configure_surface(
             &mut self.surface,
             &self.device,
             self.swapchain_format,
             &self.window,
-        )
+        );
     }
 }
 
@@ -102,7 +122,7 @@ fn setup() -> (EventLoop<()>, ExampleData) {
     ))
     .unwrap();
 
-    configure_surface(&mut surface, &device, swapchain_format, &window);
+    let viewport = configure_surface(&mut surface, &device, swapchain_format, &window);
 
     (
         event_loop,
@@ -113,12 +133,13 @@ fn setup() -> (EventLoop<()>, ExampleData) {
             surface,
             swapchain_format,
             mouse: [0., 0.],
+            viewport,
         },
     )
 }
 
 fn main() {
-    println!("Hello, world!");
+    println!("[P]revious example\n[N]ext example");
     let (event_loop, mut example_data) = setup();
 
     let ex01 = example_01::Example01::new(&example_data);
@@ -126,7 +147,7 @@ fn main() {
     let ex03 = example_03::Example03::new(&example_data);
 
     let mut examples: Vec<Box<dyn Example>> = vec![Box::new(ex01), Box::new(ex02), Box::new(ex03)];
-    let mut example_index = 0;
+    let mut example_index = 2;
     let mut is_focused = true;
 
     let mut last_time = std::time::Instant::now();
@@ -134,8 +155,40 @@ fn main() {
     // let mut num_frames = 0;
     let mut num_renders_since_last_second = 0;
 
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut watcher =
+        PollWatcher::new(tx, notify::Config::default().with_manual_polling()).unwrap();
+    let recursive_dir = &Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    watcher
+        .watch(recursive_dir, notify::RecursiveMode::Recursive)
+        .unwrap();
+    println!("Watching {recursive_dir:?} for file changes");
+
     event_loop.run(move |event, _, ctrl_flow| {
         let ex: &mut dyn Example = examples[example_index].as_mut();
+
+        // Re-compile shaders if fs events on wgsl files happen
+        watcher.poll().unwrap();
+        while let Ok(res) = rx.try_recv() {
+            match res {
+                Ok(event) => {
+                    println!("Changed: {event:?}");
+
+                    if matches!(event.kind, notify::EventKind::Modify(_))
+                        && event
+                            .paths
+                            .iter()
+                            .any(|p| p.extension().unwrap_or_default() == "wgsl")
+                    {
+                        println!("wgsl changed, asking example to recompile shader");
+                        let common = ex.common();
+                        common.recreate_shader(&example_data.device);
+                        common.dirty = true;
+                    }
+                }
+                Err(e) => println!("Watch err: {e:?}"),
+            }
+        }
 
         // Update time, counters
         let now = std::time::Instant::now();
@@ -157,6 +210,14 @@ fn main() {
         use winit::event::Event;
         match event {
             Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *ctrl_flow = ControlFlow::Exit;
+                return;
+            }
+
+            Event::WindowEvent {
                 event:
                     WindowEvent::KeyboardInput {
                         input:
@@ -174,7 +235,25 @@ fn main() {
                     return;
                 }
 
+                let common = ex.common();
                 match virtual_keycode {
+                    VirtualKeyCode::Up | VirtualKeyCode::W => {
+                        common.polygon_mode = match common.polygon_mode {
+                            PolygonMode::Fill => PolygonMode::Fill,
+                            PolygonMode::Line => PolygonMode::Fill,
+                            PolygonMode::Point => PolygonMode::Line,
+                        };
+                        common.dirty = true;
+                    }
+                    VirtualKeyCode::Down | VirtualKeyCode::S => {
+                        common.polygon_mode = match common.polygon_mode {
+                            PolygonMode::Fill => PolygonMode::Line,
+                            PolygonMode::Line => PolygonMode::Point,
+                            PolygonMode::Point => PolygonMode::Point,
+                        };
+                        common.dirty = true;
+                    }
+
                     VirtualKeyCode::Escape => {
                         *ctrl_flow = ControlFlow::Exit;
                         return;
@@ -231,6 +310,9 @@ fn main() {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
+                // Set mouse position to the -1..1 range using wgpu's coordinate system,
+                // i.e. origin middle of screen, top right is (1., 1.)
+
                 let x = (position.x / example_data.window.inner_size().width as f64)
                     .max(0.0)
                     .min(1.0)
@@ -243,6 +325,7 @@ fn main() {
                     + 1.0;
 
                 example_data.mouse = [x as f32, y as f32];
+                // dbg!(&example_data.mouse);
             }
 
             // Event::NewEvents(_) => todo!(),

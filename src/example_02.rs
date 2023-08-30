@@ -3,25 +3,24 @@ use std::time::Duration;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferUsages, CommandEncoderDescriptor, FragmentState, MultisampleState,
-    Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModule,
-    ShaderModuleDescriptor, ShaderStages, TextureViewDescriptor, VertexAttribute,
+    BindGroupLayoutEntry, BufferUsages, CommandEncoderDescriptor, Device, FragmentState,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    ShaderModule, ShaderStages, TextureFormat, TextureViewDescriptor, VertexAttribute,
     VertexBufferLayout, VertexState,
 };
 use winit::event::VirtualKeyCode;
 
-use crate::{Example, ExampleData};
+use crate::{util::ExampleCommonState, Example, ExampleData};
 
 pub struct Example02 {
+    common: ExampleCommonState,
     render_pipeline: Option<RenderPipeline>,
     bgl0: BindGroupLayout,
     vertices: [[f32; 2]; 3],
     num_instances: u32,
     time: Duration,
     radius: f32,
-    polygon_mode: PolygonMode,
-    shader_module: ShaderModule,
 }
 
 impl Example for Example02 {
@@ -30,22 +29,6 @@ impl Example for Example02 {
         // Remove the render pipeline such that it's recreated
         // later (needed to apply new mode).
         match key {
-            VirtualKeyCode::Up | VirtualKeyCode::W => {
-                self.polygon_mode = match self.polygon_mode {
-                    PolygonMode::Fill => PolygonMode::Fill,
-                    PolygonMode::Line => PolygonMode::Fill,
-                    PolygonMode::Point => PolygonMode::Line,
-                };
-                self.render_pipeline = None;
-            }
-            VirtualKeyCode::Down | VirtualKeyCode::S => {
-                self.polygon_mode = match self.polygon_mode {
-                    PolygonMode::Fill => PolygonMode::Line,
-                    PolygonMode::Line => PolygonMode::Point,
-                    PolygonMode::Point => PolygonMode::Point,
-                };
-                self.render_pipeline = None;
-            }
             VirtualKeyCode::A => {
                 self.radius = (self.radius - 0.1).max(0.1);
             }
@@ -72,14 +55,66 @@ impl Example for Example02 {
         }
         dbg!(&self.num_instances);
     }
+
+    fn common(&mut self) -> &mut ExampleCommonState {
+        &mut self.common
+    }
+}
+
+fn render_pipeline(
+    device: &Device,
+    shader_module: &ShaderModule,
+    bgl: &BindGroupLayout,
+    texture_format: TextureFormat,
+    polygon_mode: PolygonMode,
+) -> RenderPipeline {
+    device.create_render_pipeline(&RenderPipelineDescriptor {
+        label: "ex02-rpd".into(),
+        layout: Some(&device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: "ex02-pld".into(),
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        })),
+        vertex: VertexState {
+            module: &shader_module,
+            entry_point: "vs",
+            // todo: query set later and swap order and see if there is a diff?
+            buffers: &[
+                // The triangle vertices
+                VertexBufferLayout {
+                    array_stride: wgpu::VertexFormat::Float32x2.size(),
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &[VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x2,
+                        offset: 0,
+                        shader_location: 0,
+                    }],
+                },
+            ],
+        },
+        fragment: Some(FragmentState {
+            module: &shader_module,
+            entry_point: "fs",
+            // what if several targets? just have to match in render pass?
+            targets: &[Some(texture_format.into())],
+        }),
+        primitive: PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            polygon_mode,
+            ..Default::default()
+        },
+        // todo: enable and see
+        depth_stencil: None,
+        multisample: MultisampleState::default(),
+        multiview: None,
+    })
 }
 
 impl Example02 {
     pub fn new(e: &ExampleData) -> Self {
-        let shader_module = e.device.create_shader_module(ShaderModuleDescriptor {
-            label: "ex02-sm".into(),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ex02.wgsl").into()),
-        });
+        let shader_source = "ex02.wgsl";
+        let texture_format = e.swapchain_format;
+        let common = ExampleCommonState::new(&e.device, texture_format, shader_source, "ex02");
 
         let bgl0 = e
             .device
@@ -133,8 +168,6 @@ impl Example02 {
                 ],
             });
 
-        let polygon_mode = PolygonMode::Fill;
-
         Self {
             render_pipeline: None,
             vertices: [[-0.5, 0.0], [0.0, 1.0], [0.5, 0.0]],
@@ -142,52 +175,8 @@ impl Example02 {
             bgl0,
             num_instances: 10,
             radius: 0.3,
-            polygon_mode,
-            shader_module,
+            common,
         }
-    }
-
-    fn make_render_pipeline(&self, e: &ExampleData) -> RenderPipeline {
-        e.device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: "ex02-rpd".into(),
-            layout: Some(&e.device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: "ex02-pld".into(),
-                bind_group_layouts: &[&self.bgl0],
-                push_constant_ranges: &[],
-            })),
-            vertex: VertexState {
-                module: &self.shader_module,
-                entry_point: "vs",
-                // todo: query set later and swap order and see if there is a diff?
-                buffers: &[
-                    // The triangle vertices
-                    VertexBufferLayout {
-                        array_stride: wgpu::VertexFormat::Float32x2.size(),
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        }],
-                    },
-                ],
-            },
-            fragment: Some(FragmentState {
-                module: &self.shader_module,
-                entry_point: "fs",
-                // what if several targets? just have to match in render pass?
-                targets: &[Some(e.swapchain_format.into())],
-            }),
-            primitive: PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                polygon_mode: self.polygon_mode,
-                ..Default::default()
-            },
-            // todo: enable and see
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            multiview: None,
-        })
     }
 
     fn vertices(&self) -> &[u8] {
@@ -195,6 +184,17 @@ impl Example02 {
     }
 
     pub fn do_render(&mut self, e: &ExampleData) {
+        if self.common.dirty || self.render_pipeline.is_none() {
+            self.render_pipeline = Some(render_pipeline(
+                &e.device,
+                &self.common.shader_module,
+                &self.bgl0,
+                self.common.texture_format,
+                self.common.polygon_mode,
+            ));
+            self.common.dirty = false;
+        }
+
         let mut ce = e.device.create_command_encoder(&CommandEncoderDescriptor {
             label: "ex02-ce".into(),
         });
@@ -264,10 +264,6 @@ impl Example02 {
                 // todo
                 depth_stencil_attachment: None,
             });
-
-            if self.render_pipeline.is_none() {
-                self.render_pipeline = Some(self.make_render_pipeline(e));
-            }
 
             rpass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
             rpass.set_vertex_buffer(0, index_buf.slice(..));
