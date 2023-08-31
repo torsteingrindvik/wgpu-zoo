@@ -1,236 +1,92 @@
 /*
-This should become the compute one
+Goals:
+    - See if we can make sense of having several color attachments
+
+Things we learned:
+    - vec4 in vertex shader w param thing:
+        If we in wgsl place a vertex using vec4(-1., -1., 0., 1.) * 0.5,
+        this vertex will be in the bottom left corner. It ignores the 0.5 factor, since that
+        also applies to the last param `w`.
+
+        Likely due to some 1/w thing happening when moving to the frag shader.
+
+    - vec4 with w == 0:
+        If we make a vertex via vec4(-1., -1., 0., 0.), we won't get any triangle (when doing the same for other w values).
+
+    - We can use the window's view twice (alias it?).
+        If we use two color targets and both use the winit window texture as view, we don't get any complaints.
+        It seems that then the second location overwrites the first.
+
+    - We need to handle resize if we render offline (TODO).
  */
-use std::{f32::consts::TAU, time::Duration};
-
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, Buffer, BufferUsages,
-    CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor,
-    FragmentState, MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderStages,
-    TextureViewDescriptor, VertexBufferLayout, VertexState,
+    ColorWrites, CommandEncoderDescriptor, Extent3d, FragmentState, MultisampleState, Operations,
+    PipelineLayoutDescriptor, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, Texture, TextureDescriptor, TextureUsages,
+    TextureViewDescriptor, VertexState,
 };
-use winit::event::VirtualKeyCode;
 
-use crate::{Example, ExampleData};
+use crate::{util::ExampleCommonState, Example, ExampleData};
 
 pub struct Example04 {
+    common: ExampleCommonState,
     render_pipeline: Option<RenderPipeline>,
-    compute_pipeline: ComputePipeline,
-    bgl0: BindGroupLayout,
-    vertices: [[f32; 2]; 3],
-    num_instances: u32,
-    radius: f32,
-    polygon_mode: PolygonMode,
-    shader_module: ShaderModule,
-    gon: u16,
-    gon_buf: Buffer,
-    goni_buf: Buffer,
-}
-
-// Make an n-gon via the resolution n.
-// The first vertex returned is centered at [0., 0].
-// The rest are points on the unit circle separated by an appropriate angle.
-// A fitting index buffer is also given for rendering as a triangle list.
-fn make_ngon(n: u16) -> (Vec<[f32; 2]>, Vec<u16>) {
-    assert!(n > 1);
-    let mut gon = vec![[0., 0.]];
-
-    // So if n = 3, then we end up with
-    // a total of 4 vertices:
-    //  [0., 0.],
-    //  [1., 0.],
-    //  [0., 1.],
-    //  [-1., 0.],
-    //  [0., -1.],
-    for i in 0..=n {
-        let (y, x) = (i as f32 / (n + 1) as f32 * TAU).sin_cos();
-        gon.push([x, y]);
-    }
-
-    // With the above example, we want to make 3 triangles, using vertices:
-    //  [0, 1, 2],
-    //  [0, 2, 3],
-    //  [0, 3, 4],
-    let mut indices = vec![];
-    for i in 0..n {
-        // Center vertex
-        indices.push(0);
-        // New vertices
-        indices.push(i + 1);
-        indices.push(i + 2);
-    }
-
-    (gon, indices)
-}
-
-#[test]
-fn make_3gon() {
-    let (vertices, indices) = make_ngon(3);
-    dbg!(&vertices, &indices);
+    offscreen: Texture,
 }
 
 impl Example for Example04 {
-    fn handle_key(&mut self, key: winit::event::VirtualKeyCode) {
-        // Use Up/Down to switch between polygon modes.
-        // Remove the render pipeline such that it's recreated
-        // later (needed to apply new mode).
-        match key {
-            VirtualKeyCode::Up | VirtualKeyCode::W => {
-                self.polygon_mode = match self.polygon_mode {
-                    PolygonMode::Fill => PolygonMode::Fill,
-                    PolygonMode::Line => PolygonMode::Fill,
-                    PolygonMode::Point => PolygonMode::Line,
-                };
-                self.render_pipeline = None;
-            }
-            VirtualKeyCode::Down | VirtualKeyCode::S => {
-                self.polygon_mode = match self.polygon_mode {
-                    PolygonMode::Fill => PolygonMode::Line,
-                    PolygonMode::Line => PolygonMode::Point,
-                    PolygonMode::Point => PolygonMode::Point,
-                };
-                self.render_pipeline = None;
-            }
-            VirtualKeyCode::A => {
-                self.radius = (self.radius - 0.1).max(0.1);
-            }
-            VirtualKeyCode::D => {
-                self.radius = (self.radius + 0.1).min(2.);
-            }
-            _ => {}
-        }
-    }
-
     fn render(&mut self, data: &ExampleData) {
         self.do_render(data);
     }
 
-    fn dt(&mut self, dt: Duration) {
-        self.time += dt;
-    }
-
-    fn handle_scroll(&mut self, scroll_up: bool) {
-        if scroll_up {
-            self.num_instances = (self.num_instances + 1).min(100);
-        } else {
-            self.num_instances = self.num_instances.saturating_sub(1).max(3);
-        }
-        dbg!(&self.num_instances);
+    fn common(&mut self) -> &mut ExampleCommonState {
+        &mut self.common
     }
 }
 
 impl Example04 {
     pub fn new(e: &ExampleData) -> Self {
-        let shader_module = e.device.create_shader_module(ShaderModuleDescriptor {
-            label: "ex04-sm".into(),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ex04.wgsl").into()),
-        });
+        let shader_source = "ex04.wgsl";
+        let texture_format = e.swapchain_format;
+        let common = ExampleCommonState::new(&e.device, texture_format, shader_source, "ex04");
 
-        let shader_module_compute = e.device.create_shader_module(ShaderModuleDescriptor {
-            label: "ex04-sm-compute".into(),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ex04-compute.wgsl").into()),
-        });
-
-        let bgl0 = e
-            .device
-            .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: "ex04-bgld0".into(),
-                entries: &[
-                    // Total # of instances
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // Radius
-                    BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // Mouse
-                    BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    // Time
-                    BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-
-        let polygon_mode = PolygonMode::Fill;
-
-        let compute_pipeline = e
-            .device
-            .create_compute_pipeline(&ComputePipelineDescriptor {
-                label: Some("ex04-cpassd"),
-                layout: Some(&e.device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                    label: "ex04-cpass-pld".into(),
-                    bind_group_layouts: &[],
-                    push_constant_ranges: &[],
-                })),
-                module: &shader_module_compute,
-                entry_point: "cs",
-            });
-
-        let gon = 10;
-        let (vertices, indices) = make_ngon(gon);
-        let gon_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("gonbuf"),
-            contents: bytemuck::cast_slice(vertices.as_slice()),
-            usage: BufferUsages::VERTEX,
-        });
-        let goni_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("gonbuf-indices"),
-            contents: bytemuck::cast_slice(indices.as_slice()),
-            usage: BufferUsages::INDEX,
+        let offscreen = e.device.create_texture(&TextureDescriptor {
+            label: "offscreen".into(),
+            size: Extent3d {
+                width: e.viewport[0] as u32,
+                height: e.viewport[1] as u32,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: texture_format,
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
         });
 
         Self {
             render_pipeline: None,
-            vertices: [[-0.5, 0.0], [0.0, 1.0], [0.5, 0.0]],
-            time: Duration::from_secs(0),
-            bgl0,
-            num_instances: 10,
-            radius: 0.3,
-            polygon_mode,
-            shader_module,
-            compute_pipeline,
-            gon_buf,
-            goni_buf,
-            gon,
+            common,
+            offscreen,
         }
     }
 
     fn make_render_pipeline(&self, e: &ExampleData) -> RenderPipeline {
+        let texture_format = e.swapchain_format;
+
+        let cts1 = wgpu::ColorTargetState {
+            format: texture_format,
+            blend: None,
+            write_mask: ColorWrites::all(),
+        };
+        let cts2 = wgpu::ColorTargetState {
+            format: texture_format,
+            blend: None,
+            // See ex04.wgsl
+            write_mask: ColorWrites::GREEN | ColorWrites::BLUE,
+        };
+
         e.device.create_render_pipeline(&RenderPipelineDescriptor {
             label: "ex04-rpassd".into(),
             layout: Some(&e.device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -239,136 +95,77 @@ impl Example04 {
                 push_constant_ranges: &[],
             })),
             vertex: VertexState {
-                module: &self.shader_module,
+                module: &self.common.shader_module,
                 entry_point: "vs",
-                // todo: query set later and swap order and see if there is a diff?
-                buffers: &[
-                    // The triangle vertices
-                    VertexBufferLayout {
-                        array_stride: wgpu::VertexFormat::Float32x2.size(),
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &[],
-                    },
-                ],
+                buffers: &[],
             },
             fragment: Some(FragmentState {
-                module: &self.shader_module,
+                module: &self.common.shader_module,
                 entry_point: "fs",
-                // what if several targets? just have to match in render pass?
-                targets: &[Some(e.swapchain_format.into())],
+                // This is what we want to poke at: We now have more than one of these
+                targets: &[Some(cts1), Some(cts2)],
             }),
             primitive: PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                polygon_mode: self.polygon_mode,
+                polygon_mode: self.common.polygon_mode,
                 ..Default::default()
             },
-            // todo: enable and see
             depth_stencil: None,
             multisample: MultisampleState::default(),
             multiview: None,
         })
     }
 
-    // fn vertices(&self) -> &[u8] {
-    //     bytemuck::cast_slice(&self.vertices)
-    // }
-
     pub fn do_render(&mut self, e: &ExampleData) {
-        // let index_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: "ex04-index-buf".into(),
-        //     contents: bytemuck::cast_slice(self.vertices()),
-        //     usage: BufferUsages::VERTEX,
-        // });
-
-        // let num_instances_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: "ex04-uni-ninst".into(),
-        //     contents: self.num_instances.to_le_bytes().as_ref(),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        // let radius_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: "ex04-uni-radius".into(),
-        //     contents: self.radius.to_le_bytes().as_ref(),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        // let mouse_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: "ex04-uni-mouse".into(),
-        //     contents: bytemuck::cast_slice(e.mouse.as_slice()),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        // let time_buf = e.device.create_buffer_init(&BufferInitDescriptor {
-        //     label: "ex04-uni-time".into(),
-        //     contents: self.time.as_secs_f32().to_le_bytes().as_ref(),
-        //     usage: BufferUsages::UNIFORM,
-        // });
+        if self.common.dirty || self.render_pipeline.is_none() {
+            self.render_pipeline = Some(self.make_render_pipeline(&e));
+            self.common.dirty = false;
+        }
 
         // Command encoder begin
-
         let mut ce = e.device.create_command_encoder(&CommandEncoderDescriptor {
             label: "ex04-ce".into(),
         });
 
-        // Compute pass resources
-
-        // Compute pass
-        {
-            let _cpass = ce.begin_compute_pass(&ComputePassDescriptor {
-                label: "ex04-cp".into(),
-            });
-
-            // cpass.set_pipeline();
-        }
-
         // Render pass resources
         let current_texture = e.surface.get_current_texture().unwrap();
-        let view = &current_texture
+        let screen_view = &current_texture
             .texture
             .create_view(&TextureViewDescriptor::default());
 
-        // let bg0 = e.device.create_bind_group(&BindGroupDescriptor {
-        //     label: "ex04-bg-0".into(),
-        //     layout: &self.bgl0,
-        //     entries: &[
-        //         BindGroupEntry {
-        //             binding: 0,
-        //             resource: num_instances_buf.as_entire_binding(),
-        //         },
-        //         BindGroupEntry {
-        //             binding: 1,
-        //             resource: radius_buf.as_entire_binding(),
-        //         },
-        //         BindGroupEntry {
-        //             binding: 2,
-        //             resource: mouse_buf.as_entire_binding(),
-        //         },
-        //         BindGroupEntry {
-        //             binding: 3,
-        //             resource: time_buf.as_entire_binding(),
-        //         },
-        //     ],
-        // });
+        // To actually see the output of this use renderdoc.
+        // (Since we don't save it to disk)
+        let offscreen_view = self
+            .offscreen
+            .create_view(&TextureViewDescriptor::default());
 
         // Render pass
         {
             let mut rpass = ce.begin_render_pass(&RenderPassDescriptor {
                 label: "ex04-rp".into(),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: Operations::default(),
-                })],
+                // The color attachments must match the render pipeline's fragment state targets.
+                // Since that has `Some(_), Some(_)`, we crash if we have e.g. `Some(_), None` here.
+                color_attachments: &[
+                    Some(RenderPassColorAttachment {
+                        view: &screen_view,
+                        resolve_target: None,
+                        // Default: Clear on load, and then store
+                        ops: Operations::default(),
+                    }),
+                    Some(RenderPassColorAttachment {
+                        view: &offscreen_view,
+                        resolve_target: None,
+                        ops: Operations::default(),
+                    }),
+                ],
                 // todo
                 depth_stencil_attachment: None,
             });
 
-            if self.render_pipeline.is_none() {
-                self.render_pipeline = Some(self.make_render_pipeline(e));
-            }
-
             rpass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
-            rpass.set_vertex_buffer(0, self.gon_buf.slice(..));
-            rpass.set_index_buffer(self.goni_buf.slice(..), wgpu::IndexFormat::Uint16);
-            // rpass.set_bind_group(0, &bg0, &[]);
-            rpass.draw(0..self.gon as u32, 0..1);
+            // No vertex buffer, so we'll use the trick where we calc a triangle from the indices within
+            // the 0..3 range instead
+            rpass.draw(0..3, 0..1);
         }
 
         e.queue.submit(std::iter::once(ce.finish()));

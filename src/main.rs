@@ -14,14 +14,16 @@ use winit::{
     window::Window,
 };
 
+pub mod util;
+
 mod example_01;
 mod example_02;
 mod example_03;
-pub mod util;
+mod example_04;
 
 pub trait Example {
     // Keyboard
-    fn handle_key(&mut self, key: VirtualKeyCode);
+    fn handle_key(&mut self, _key: VirtualKeyCode) {}
 
     // Render!
     fn render(&mut self, data: &ExampleData);
@@ -153,8 +155,14 @@ fn main() {
     let ex01 = example_01::Example01::new(&example_data);
     let ex02 = example_02::Example02::new(&example_data);
     let ex03 = example_03::Example03::new(&example_data);
+    let ex04 = example_04::Example04::new(&example_data);
 
-    let mut examples: Vec<Box<dyn Example>> = vec![Box::new(ex01), Box::new(ex02), Box::new(ex03)];
+    let mut examples: Vec<Box<dyn Example>> = vec![
+        Box::new(ex01),
+        Box::new(ex02),
+        Box::new(ex03),
+        Box::new(ex04),
+    ];
     let mut example_index = 2;
     let mut is_focused = true;
 

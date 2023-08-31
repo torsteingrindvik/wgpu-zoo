@@ -14,6 +14,7 @@ The goal is just to poke at things to see what I can learn.
     - Done via `notify` on `wgsl` file changes
 - Catch bad compile of wgsl?
 - Allow spoofing mouse movements
+- Handle resize (recreate textures, mark dirty)
 
 ## Example harness
 
@@ -54,6 +55,26 @@ Move mouse to have the ring follow.
 
 Mouse to hover, then press to select, hold down and move then release to place.
 Scroll wheel to increase/decrease threshold.
+
+## Example 4: Several render attachments
+
+See [here](https://gpuweb.github.io/gpuweb/wgsl/#example-ee897116).
+
+The general syntax is:
+
+```wgsl
+struct MyOutputs {
+  @location(0) foo: vec4<f32>
+  @location(1) bar: vec4<f32>
+  @location(2) qux: vec4<f32>
+}
+```
+
+Which is interesting just to try.
+The example makes a triangle (slightly skewered) and renders it in a single pass to two render attachments.
+One is the screen, the other is offscreen.
+
+The offscreen one isn't saved, so it's only viewable through something like renderdoc.
 
 ## Example n: Compute into render
 
