@@ -3,8 +3,8 @@ use std::{path::Path, time::Duration};
 use notify::{PollWatcher, Watcher};
 use util::ExampleCommonState;
 use wgpu::{
-    Backends, Device, Features, Limits, PolygonMode, Queue, Surface, SurfaceConfiguration,
-    TextureFormat,
+    Backends, Device, Extent3d, Features, Limits, PolygonMode, Queue, Surface,
+    SurfaceConfiguration, TextureFormat, TextureFormatFeatureFlags,
 };
 use winit::{
     event::{
@@ -20,6 +20,7 @@ mod example_01;
 mod example_02;
 mod example_03;
 mod example_04;
+mod example_05;
 
 pub trait Example {
     // Keyboard
@@ -47,6 +48,8 @@ pub struct ExampleData {
     queue: Queue,
     surface: Surface,
     swapchain_format: TextureFormat,
+
+    max_sample_count: u32,
 
     // For use in uniforms:
     mouse: [f32; 2],
@@ -86,6 +89,14 @@ impl ExampleData {
             &self.window,
         );
     }
+
+    fn extent_3d(&self) -> Extent3d {
+        Extent3d {
+            width: self.window.inner_size().width,
+            height: self.window.inner_size().height,
+            depth_or_array_layers: 1,
+        }
+    }
 }
 
 fn setup() -> (EventLoop<()>, ExampleData) {
@@ -106,10 +117,38 @@ fn setup() -> (EventLoop<()>, ExampleData) {
     dbg!(adapter.get_info());
 
     let swapchain_capabilities = surface.get_capabilities(&adapter);
+    // Prints:
+    //  - formats (e.g. Bgra8UnormSrgb, ..)
+    //  - present modes (e.g. Fifo, ..)
+    //  - alpha modes (e.g. opaque, ..)
+    //  - usages (e.g. COPY_SRC, ..)
     dbg!(&swapchain_capabilities);
+
     let swapchain_formats = swapchain_capabilities.formats;
-    dbg!(&swapchain_formats);
     let swapchain_format = swapchain_formats[0];
+
+    for f in swapchain_formats {
+        // Typically we get two formats: Bgra8UnormSrgb and Bgra8Unorm.
+        // They differ slightly:
+        //  - Bgra8Unorm has `STORAGE_BINDING` in `TextureUsages`
+        //  - Bgra8Unorm has `STORAGE_READ_WRITE` in `TextureFormatFeatureFlags`
+        dbg!(f, adapter.get_texture_format_features(f));
+    }
+
+    let tff = adapter.get_texture_format_features(swapchain_format).flags;
+
+    // Let's do this the way the example does
+    let max_sample_count = if tff.contains(TextureFormatFeatureFlags::MULTISAMPLE_X16) {
+        16
+    } else if tff.contains(TextureFormatFeatureFlags::MULTISAMPLE_X8) {
+        8
+    } else if tff.contains(TextureFormatFeatureFlags::MULTISAMPLE_X4) {
+        4
+    } else if tff.contains(TextureFormatFeatureFlags::MULTISAMPLE_X2) {
+        2
+    } else {
+        1
+    };
 
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
@@ -117,7 +156,8 @@ fn setup() -> (EventLoop<()>, ExampleData) {
             features: Features::default()
                 | Features::POLYGON_MODE_LINE
                 | Features::POLYGON_MODE_POINT
-                | Features::PUSH_CONSTANTS,
+                | Features::PUSH_CONSTANTS
+                | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
             limits: Limits {
                 // https://docs.rs/wgpu/latest/wgpu/struct.Limits.html#structfield.max_push_constant_size
                 // Seems this amount should be supported by all backends
@@ -144,6 +184,7 @@ fn setup() -> (EventLoop<()>, ExampleData) {
             swapchain_format,
             mouse: [0., 0.],
             viewport,
+            max_sample_count,
         },
     )
 }
@@ -156,14 +197,17 @@ fn main() {
     let ex02 = example_02::Example02::new(&example_data);
     let ex03 = example_03::Example03::new(&example_data);
     let ex04 = example_04::Example04::new(&example_data);
+    let ex05 = example_05::Example05::new(&example_data);
 
     let mut examples: Vec<Box<dyn Example>> = vec![
         Box::new(ex01),
         Box::new(ex02),
         Box::new(ex03),
         Box::new(ex04),
+        Box::new(ex05),
     ];
-    let mut example_index = 2;
+
+    let mut example_index = 4;
     let mut is_focused = true;
 
     let mut last_time = std::time::Instant::now();

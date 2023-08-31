@@ -15,6 +15,12 @@ The goal is just to poke at things to see what I can learn.
 - Catch bad compile of wgsl?
 - Allow spoofing mouse movements
 - Handle resize (recreate textures, mark dirty)
+- Add description to example trait, such that when we P/N to switch we can println what's going on
+
+## Ideas
+
+- Scissor rect around cursor, two passes, one shows fill polygon mode, other shows something else. Would make something like an x-ray effect?
+    If it could be combined with gltf etc. that would be neat
 
 ## Example harness
 
