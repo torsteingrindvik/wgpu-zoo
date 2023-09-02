@@ -209,7 +209,7 @@ impl Example02 {
         });
         let mouse_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex02-uni-mouse".into(),
-            contents: bytemuck::cast_slice(e.mouse.as_slice()),
+            contents: bytemuck::cast_slice(e.mouse_clip_space().as_slice()),
             usage: BufferUsages::UNIFORM,
         });
         let time_buf = e.device.create_buffer_init(&BufferInitDescriptor {

@@ -21,6 +21,7 @@ mod example_02;
 mod example_03;
 mod example_04;
 mod example_05;
+mod example_06;
 
 pub trait Example {
     // Keyboard
@@ -51,7 +52,6 @@ pub struct ExampleData {
 
     max_sample_count: u32,
 
-    // For use in uniforms:
     mouse: [f32; 2],
     viewport: [f32; 2],
 }
@@ -96,6 +96,27 @@ impl ExampleData {
             height: self.window.inner_size().height,
             depth_or_array_layers: 1,
         }
+    }
+
+    fn mouse_window_space(&self) -> [u32; 2] {
+        [self.mouse[0] as u32, self.mouse[1] as u32]
+    }
+
+    fn mouse_clip_space(&self) -> [f32; 2] {
+        // Set mouse position to the -1..1 range using wgpu's coordinate system,
+        // i.e. origin middle of screen, top right is (1., 1.)
+
+        let x = (self.mouse[0] as f32 / self.window.inner_size().width as f32)
+            .max(0.0)
+            .min(1.0)
+            * 2.
+            - 1.;
+        let y = (self.mouse[1] as f32 / self.window.inner_size().height as f32)
+            .max(0.0)
+            .min(1.0)
+            * -2.
+            + 1.0;
+        [x, y]
     }
 }
 
@@ -198,6 +219,7 @@ fn main() {
     let ex03 = example_03::Example03::new(&example_data);
     let ex04 = example_04::Example04::new(&example_data);
     let ex05 = example_05::Example05::new(&example_data);
+    let ex06 = example_06::Example06::new(&example_data);
 
     let mut examples: Vec<Box<dyn Example>> = vec![
         Box::new(ex01),
@@ -205,9 +227,10 @@ fn main() {
         Box::new(ex03),
         Box::new(ex04),
         Box::new(ex05),
+        Box::new(ex06),
     ];
 
-    let mut example_index = 4;
+    let mut example_index = 5;
     let mut is_focused = true;
 
     let mut last_time = std::time::Instant::now();
@@ -370,21 +393,7 @@ fn main() {
                 event: WindowEvent::CursorMoved { position, .. },
                 ..
             } => {
-                // Set mouse position to the -1..1 range using wgpu's coordinate system,
-                // i.e. origin middle of screen, top right is (1., 1.)
-
-                let x = (position.x / example_data.window.inner_size().width as f64)
-                    .max(0.0)
-                    .min(1.0)
-                    * 2.
-                    - 1.;
-                let y = (position.y / example_data.window.inner_size().height as f64)
-                    .max(0.0)
-                    .min(1.0)
-                    * -2.
-                    + 1.0;
-
-                example_data.mouse = [x as f32, y as f32];
+                example_data.mouse = [position.x as f32, position.y as f32];
             }
 
             // Event::NewEvents(_) => todo!(),

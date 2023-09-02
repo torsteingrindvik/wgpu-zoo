@@ -232,7 +232,7 @@ impl Example03 {
         
         // If something is selected, move that vertex to where the mouse is
         if let Some(vi) = self.selected_vertex {
-            self.vertices[vi as usize] = e.mouse;
+            self.vertices[vi as usize] = e.mouse_clip_space();
         }
 
         let viewport_buf = e.device.create_buffer_init(&BufferInitDescriptor {
@@ -247,7 +247,7 @@ impl Example03 {
         });
         let mouse_buf = e.device.create_buffer_init(&BufferInitDescriptor {
             label: "ex03-uni-mouse".into(),
-            contents: bytemuck::cast_slice(e.mouse.as_slice()),
+            contents: bytemuck::cast_slice(e.mouse_clip_space().as_slice()),
             usage: BufferUsages::UNIFORM,
         });
         let time_buf = e.device.create_buffer_init(&BufferInitDescriptor {

@@ -82,6 +82,18 @@ One is the screen, the other is offscreen.
 
 The offscreen one isn't saved, so it's only viewable through something like renderdoc.
 
+## Example 5: Scissor rect, MSAA
+
+Uses scissor rect to draw a whole screen across two passes.
+Draws left side then right side.
+The right side load the results of the left then continues.
+
+Shows a spinning circle of lines. One side has MSAA enabled, the other does not.
+
+## Example 6: Set viewport
+
+Tracks the mouse cursor, splitting example 05 into four quadrants.
+
 ## Example n: Compute into render
 
 The goal is to use a compute shader to generate geometry, then render that.
