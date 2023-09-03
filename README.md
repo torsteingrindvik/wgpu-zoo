@@ -94,6 +94,28 @@ Shows a spinning circle of lines. One side has MSAA enabled, the other does not.
 
 Tracks the mouse cursor, splitting example 05 into four quadrants.
 
+## Example 7: Storage texture mouse drawing
+
+- Draw to a storage texture: Color is added proportional to distance to mouse cursor
+- Storage texture is write only, so use another texture to read (sample) from
+- The previous frame's storage is the next frame's sampled texture
+
+## Example n: Draw with cursor (frag)
+
+- Mouse is passed via uniform
+- For each pixel, add some amount when mouse clicked
+- Amount added proportional to length from mouse (and delta time)
+- Two textures, one for writing one for reading?
+    - https://www.w3.org/TR/WGSL/#texturestore
+    Seems we can only write to a storage texture.
+    So then we have to write to that, then get the results into the framebuffer after?
+
+## Example n: Draw with cursor (compute)
+
+Same as above but compute shader based.
+
+- Only run compute pass when mouse is held down
+
 ## Example n: Compute into render
 
 The goal is to use a compute shader to generate geometry, then render that.

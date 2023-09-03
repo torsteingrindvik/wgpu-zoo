@@ -18,6 +18,9 @@ pub struct ExampleCommonState {
     // Should this example recreate resources?
     // E.g. the `RenderPipeline`.
     pub dirty: bool,
+
+    // Which frame # is going to be rendered
+    pub frame: u64,
 }
 
 // Create a shader module from a wgsl file in the "src" dir.
@@ -53,6 +56,7 @@ impl ExampleCommonState {
             polygon_mode: PolygonMode::Fill,
             dirty: true,
             time: Duration::from_secs(0),
+            frame: 0,
         }
     }
 
@@ -60,7 +64,15 @@ impl ExampleCommonState {
         self.time += dt;
     }
 
+    pub fn increase_frame(&mut self) {
+        self.frame += 1;
+    }
+
     pub fn recreate_shader(&mut self, device: &Device) {
         self.shader_module = shader_module(device, self.shader_source, self.label)
+    }
+
+    pub fn frame(&self) -> u64 {
+        self.frame
     }
 }

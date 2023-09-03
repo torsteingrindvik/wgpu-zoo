@@ -22,6 +22,7 @@ mod example_03;
 mod example_04;
 mod example_05;
 mod example_06;
+mod example_07;
 
 pub trait Example {
     // Keyboard
@@ -39,6 +40,7 @@ pub trait Example {
 
     // Used via main runner to:
     //  - increase example elapsed time
+    //  - increase example frame #
     //  - recreate shader (on file events) and mark dirty (for example to e.g. recreate pipeline)
     fn common(&mut self) -> &mut ExampleCommonState;
 }
@@ -178,7 +180,8 @@ fn setup() -> (EventLoop<()>, ExampleData) {
                 | Features::POLYGON_MODE_LINE
                 | Features::POLYGON_MODE_POINT
                 | Features::PUSH_CONSTANTS
-                | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
+                | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
+                | Features::CLEAR_TEXTURE,
             limits: Limits {
                 // https://docs.rs/wgpu/latest/wgpu/struct.Limits.html#structfield.max_push_constant_size
                 // Seems this amount should be supported by all backends
@@ -214,23 +217,17 @@ fn main() {
     println!("[P]revious example\n[N]ext example");
     let (event_loop, mut example_data) = setup();
 
-    let ex01 = example_01::Example01::new(&example_data);
-    let ex02 = example_02::Example02::new(&example_data);
-    let ex03 = example_03::Example03::new(&example_data);
-    let ex04 = example_04::Example04::new(&example_data);
-    let ex05 = example_05::Example05::new(&example_data);
-    let ex06 = example_06::Example06::new(&example_data);
-
     let mut examples: Vec<Box<dyn Example>> = vec![
-        Box::new(ex01),
-        Box::new(ex02),
-        Box::new(ex03),
-        Box::new(ex04),
-        Box::new(ex05),
-        Box::new(ex06),
+        Box::new(example_01::Example01::new(&example_data)),
+        Box::new(example_02::Example02::new(&example_data)),
+        Box::new(example_03::Example03::new(&example_data)),
+        Box::new(example_04::Example04::new(&example_data)),
+        Box::new(example_05::Example05::new(&example_data)),
+        Box::new(example_06::Example06::new(&example_data)),
+        Box::new(example_07::Example07::new(&example_data)),
     ];
 
-    let mut example_index = 5;
+    let mut example_index = 6;
     let mut is_focused = true;
 
     let mut last_time = std::time::Instant::now();
@@ -408,6 +405,7 @@ fn main() {
             Event::RedrawRequested(_) | Event::RedrawEventsCleared => {
                 // Render!
                 ex.render(&example_data);
+                ex.common().increase_frame();
                 num_renders_since_last_second += 1;
             }
 

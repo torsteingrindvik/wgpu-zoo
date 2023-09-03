@@ -147,7 +147,7 @@ impl Example06 {
 
         for (idx, [x, y, w, h]) in quadrants.into_iter().enumerate() {
             let mut rpass = ce.begin_render_pass(&RenderPassDescriptor {
-                label: "ex06-rp-msaa".into(),
+                label: "ex06-rp".into(),
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view: &screen_view,
                     resolve_target: None,
@@ -171,25 +171,6 @@ impl Example06 {
             rpass.set_bind_group(0, &bg0, &[]);
             rpass.draw(0..64, 0..1);
         }
-
-        // {
-        //     let mut rpass = ce.begin_render_pass(&RenderPassDescriptor {
-        //         label: "ex06-rp-msaa".into(),
-        //         color_attachments: &[Some(RenderPassColorAttachment {
-        //             view: &screen_view,
-        //             resolve_target: None,
-        //             // Default: Clear on load, and then store
-        //             ops: Operations::default(),
-        //         })],
-        //         // todo
-        //         depth_stencil_attachment: None,
-        //     });
-
-        //     rpass.set_pipeline(&self.render_pipeline.as_ref().unwrap());
-        //     rpass.set_viewport(x, y, w, h, min_depth, max_depth);
-        //     rpass.set_bind_group(0, &bg0, &[]);
-        //     rpass.draw(0..64, 0..1);
-        // }
 
         e.queue.submit(std::iter::once(ce.finish()));
         current_texture.present();
