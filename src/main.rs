@@ -23,6 +23,7 @@ mod example_04;
 mod example_05;
 mod example_06;
 mod example_07;
+mod example_08;
 
 pub trait Example {
     // Keyboard
@@ -181,11 +182,14 @@ fn setup() -> (EventLoop<()>, ExampleData) {
                 | Features::POLYGON_MODE_POINT
                 | Features::PUSH_CONSTANTS
                 | Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES
-                | Features::CLEAR_TEXTURE,
+                | Features::CLEAR_TEXTURE
+                | Features::TEXTURE_BINDING_ARRAY
+                | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
             limits: Limits {
                 // https://docs.rs/wgpu/latest/wgpu/struct.Limits.html#structfield.max_push_constant_size
                 // Seems this amount should be supported by all backends
                 max_push_constant_size: 128,
+                max_sampled_textures_per_shader_stage: 1024,
                 ..Default::default()
             },
         },
@@ -225,9 +229,10 @@ fn main() {
         Box::new(example_05::Example05::new(&example_data)),
         Box::new(example_06::Example06::new(&example_data)),
         Box::new(example_07::Example07::new(&example_data)),
+        Box::new(example_08::Example08::new(&example_data)),
     ];
 
-    let mut example_index = 6;
+    let mut example_index = 7;
     let mut is_focused = true;
 
     let mut last_time = std::time::Instant::now();

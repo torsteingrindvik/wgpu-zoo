@@ -100,6 +100,30 @@ Tracks the mouse cursor, splitting example 05 into four quadrants.
 - Storage texture is write only, so use another texture to read (sample) from
 - The previous frame's storage is the next frame's sampled texture
 
+## Example 8: Texture array v1
+
+- Create lots of textures
+    - From the limits printout:
+    > max_texture_array_layers: 256
+    ~~so let's do that~~
+    ended up via `[Texture; 256]`, try layers in example 9 instead
+    - So we go to try `binding_array<texture_2d<f32>>` 
+- Line them up on many quads
+- Make them slightly transparent
+- Make them slightly different colors
+- ~~Allow "exploding" the textures outwards to separate them~~
+- We also ended up trying using a single uniform buffer to store data for _all_ instances,
+    indexing into it via the instance index.
+    - So we used `array<mat3x3<f32>, 256>`
+
+## Example 9: Texture array v2
+Now we'll try the same as above, but with some changes:
+
+- Use a single texture with 256 layers
+- Use per-instance data via a second vertex buffer
+- Upgrade to `draw_indexed`
+- Potentially some mouse movement stuff?
+
 ## Example n: Draw with cursor (frag)
 
 - Mouse is passed via uniform
@@ -126,3 +150,18 @@ So the plan is:
 * Let's generate something like 100x100 circles
 * Let's make the circle color be based on the position on screen
 * Is it possible to make the radius of the circles somehow a function of the distance from the cursor?
+
+## Example n: LOD visualization
+
+* Have some sort of geometry in a 3D scene
+* Shade the color of the geometry based on the _screen size_
+  * If done correctly, this means we could in theory sample smaller/less detailed textures based on the screen size
+
+## Example n: Compute pass full screen
+
+Info here: https://developer.nvidia.com/blog/advanced-api-performance-shaders/
+
+
+> A good starting point is to target a thread group size corresponding to between two or eight warps. For instance, thread group size 8x8x1 or 16x16x1 for full-screen passes. Make sure to profile your shader and tune the dimensions based on profiling results.
+
+Not sure exactly how this would play out, but it would be interesting to do some profiling of a full-screen compute shader which tried variations of those sizes, but also other more "wrong" sizes.
